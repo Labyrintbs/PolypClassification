@@ -1,0 +1,7 @@
+# Mac configure file.
+.DS_Store
+
+# Program run create directory.
+data
+results
+samples

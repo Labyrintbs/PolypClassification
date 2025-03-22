@@ -97,29 +97,31 @@ def main(seed):
             writer.add_scalar("Val/Recall", recall, epoch)
             writer.add_scalar("Val/AUC", auc, epoch)
             print(f"Validation at Epoch {epoch+1} — Acc: {acc:.2f}, F1: {f1:.4f}, AUC: {auc:.4f}\n")
+            is_best = acc > best_acc1
+            is_last = (epoch + 1) == train_config.epochs
+            best_acc1 = max(acc, best_acc1)
+            save_checkpoint({"epoch": epoch + 1,
+                            "best_acc1": best_acc1,
+                            "state_dict": vgg_model.state_dict(),
+                            "ema_state_dict": ema_vgg_model.state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                            "scheduler": scheduler.state_dict()},
+                            f"epoch_{epoch + 1}.pth.tar",
+                            samples_dir,
+                            results_dir,
+                            "best.pth.tar",
+                            "last.pth.tar",
+                            is_best,
+                            is_last)
         #acc, f1, precision, recall, auc = test(ema_vgg_model, valid_prefetcher, device)
-        print("\n")
+            print("\n")
 
         # Update LR
-        scheduler.step()
+        else:
+            scheduler.step()
 
         # Automatically save the model with the highest index
-        is_best = acc > best_acc1
-        is_last = (epoch + 1) == train_config.epochs
-        best_acc1 = max(acc, best_acc1)
-        save_checkpoint({"epoch": epoch + 1,
-                         "best_acc1": best_acc1,
-                         "state_dict": vgg_model.state_dict(),
-                         "ema_state_dict": ema_vgg_model.state_dict(),
-                         "optimizer": optimizer.state_dict(),
-                         "scheduler": scheduler.state_dict()},
-                        f"epoch_{epoch + 1}.pth.tar",
-                        samples_dir,
-                        results_dir,
-                        "best.pth.tar",
-                        "last.pth.tar",
-                        is_best,
-                        is_last)
+
 
 
 def load_dataset(

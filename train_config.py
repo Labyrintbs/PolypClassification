@@ -12,7 +12,7 @@
 # limitations under the License.
 # ==============================================================================
 seed = 0
-device = "cpu" #"cuda:0"
+device = "cuda:0" 
 
 # Model configure
 model_arch_name = "vgg19"
@@ -21,7 +21,7 @@ model_num_classes = 2
 # Usage of datasets
 
 # Experiment name, easy to save weights and log files
-exp_name = "VGG19-PolarDataset" #"VGG11-ImageNet_1K"
+exp_name = "2024.03.22-VGG19-PolarDataset" #"VGG11-ImageNet_1K"
 # Dataset path
 train_image_dir = "./data/ImageNet_1K/ILSVRC2012_img_train"
 valid_image_dir = "./data/ImageNet_1K/ILSVRC2012_img_val"
@@ -42,8 +42,8 @@ resize_height = 864
 
 resized_image_size = 32 #256
 crop_image_size = 32 #224
-batch_size = 8 #128
-num_workers = 1
+batch_size = 32 #128
+num_workers = 4
 
 # The address to load the pretrained model
 pretrained_model_weights_path = "" #"./results/pretrained_models/VGG11-ImageNet_1K-64f6524f.pth.tar"

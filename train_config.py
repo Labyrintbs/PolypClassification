@@ -15,25 +15,35 @@ seed = 0
 device = "cpu" #"cuda:0"
 
 # Model configure
-model_arch_name = "vgg11"
-model_num_classes = 10
+model_arch_name = "vgg19"
+model_num_classes = 2
 
 # Usage of datasets
-use_cifar10 = True
 
 # Experiment name, easy to save weights and log files
-exp_name = "cifar10" #"VGG11-ImageNet_1K"
-# Dataset address
+exp_name = "VGG19-PolarDataset" #"VGG11-ImageNet_1K"
+# Dataset path
 train_image_dir = "./data/ImageNet_1K/ILSVRC2012_img_train"
 valid_image_dir = "./data/ImageNet_1K/ILSVRC2012_img_val"
 
-dataset_mean_normalize = (0.485, 0.456, 0.406)
-dataset_std_normalize = (0.229, 0.224, 0.225)
+# Dataset split path
+train_split_dir = "./splits/train.txt"
+val_split_dir = "./splits/val.txt"
+test_split_dir = "./splits/test.txt"
+
+# preprocessing args
+train_mean_normalize = [0.3997, 0.3288, 0.2601]
+train_std_normalize = [0.0740, 0.0677, 0.0483]
+val_mean_normalize = [0.3986, 0.3282, 0.2595]
+val_std_normalize = [0.0761, 0.0698, 0.0501]
+
+resize_width = 1096
+resize_height = 864
 
 resized_image_size = 32 #256
 crop_image_size = 32 #224
-batch_size = 64 #128
-num_workers = 4
+batch_size = 8 #128
+num_workers = 1
 
 # The address to load the pretrained model
 pretrained_model_weights_path = "" #"./results/pretrained_models/VGG11-ImageNet_1K-64f6524f.pth.tar"
@@ -42,13 +52,15 @@ pretrained_model_weights_path = "" #"./results/pretrained_models/VGG11-ImageNet_
 resume_model_weights_path = ""
 
 # Total num epochs
-epochs = 20 #600
+epochs = 10 #600
+# Validation test frequency
+val_freq = 2
 
 # Loss parameters
-loss_label_smoothing = 0.1
+loss_label_smoothing = 0
 
 # Optimizer parameter
-model_lr = 0.01 #0.1
+model_lr = 0.001 #0.1
 model_momentum = 0.9
 model_weight_decay = 2e-05
 model_ema_decay = 0.99998

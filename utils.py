@@ -19,6 +19,7 @@ from typing import Optional
 
 import torch
 from torch import nn, optim
+from torchvision import transforms
 
 __all__ = [
     "accuracy", "load_class_label", "load_state_dict", "load_pretrained_state_dict", "load_resume_state_dict",
@@ -132,6 +133,44 @@ def save_checkpoint(
         shutil.copyfile(checkpoint_path, os.path.join(results_dir, best_file_name))
     if is_last:
         shutil.copyfile(checkpoint_path, os.path.join(results_dir, last_file_name))
+
+
+def get_transform(
+    split: str,
+    mean: list,
+    std: list,
+    resize_width: int = 224,
+    resize_height: int = 224,
+) -> transforms.Compose:
+    """
+    Return a transform pipeline based on split type and target size.
+
+    Args:
+        mean(list): List of RGB mean
+        std(list): List of RGB std
+        split (str): One of ["train", "val", "test"]
+        resize_width (int): Target image width after resize
+        resize_height (int): Target image height after resize
+
+    Returns:
+        transform (torchvision.transforms.Compose): Transform pipeline
+    """
+    resize_size = (resize_height, resize_width)
+
+    if split == "train":
+        return transforms.Compose([
+            transforms.Resize(resize_size),
+            #transforms.RandomHorizontalFlip(), # only resize in cur step
+            #transforms.RandomRotation(15),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std),
+        ])
+    else:  # val / test
+        return transforms.Compose([
+            transforms.Resize(resize_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std),
+        ])
 
 
 class Summary(Enum):

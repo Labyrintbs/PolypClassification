@@ -25,11 +25,13 @@ from torch.optim import lr_scheduler
 from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torchmetrics.classification import BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryAUROC, BinaryAccuracy
+
 
 import model
 import train_config
-from dataset import CUDAPrefetcher, CPUPrefetcher, ImageDataset, CIFAR10Dataset
-from utils import accuracy, load_pretrained_state_dict, load_resume_state_dict, make_directory, save_checkpoint, \
+from dataset import CUDAPrefetcher, CPUPrefetcher, ImageDataset, CIFAR10Dataset, PolypDataset
+from utils import accuracy, load_pretrained_state_dict, load_resume_state_dict, make_directory, save_checkpoint, get_transform, \
     Summary, AverageMeter, ProgressMeter
 from test import test
 
@@ -86,17 +88,25 @@ def main(seed):
     writer = SummaryWriter(os.path.join("samples", "logs", train_config.exp_name))
 
     for epoch in range(start_epoch, train_config.epochs):
-        train(vgg_model, ema_vgg_model, train_prefetcher, criterion, optimizer, epoch, scaler, writer)
-        acc1 = test(ema_vgg_model, valid_prefetcher, device)
+        train(vgg_model, ema_vgg_model, train_prefetcher, criterion, optimizer, epoch, scaler, writer, device)
+        if (epoch + 1) % train_config.val_freq == 0 or (epoch + 1) == train_config.epochs:
+            acc, f1, precision, recall, auc = test(ema_vgg_model, valid_prefetcher, device)
+            writer.add_scalar("Val/Accuracy", acc, epoch)
+            writer.add_scalar("Val/F1", f1, epoch)
+            writer.add_scalar("Val/Precision", precision, epoch)
+            writer.add_scalar("Val/Recall", recall, epoch)
+            writer.add_scalar("Val/AUC", auc, epoch)
+            print(f"Validation at Epoch {epoch+1} — Acc: {acc:.2f}, F1: {f1:.4f}, AUC: {auc:.4f}\n")
+        #acc, f1, precision, recall, auc = test(ema_vgg_model, valid_prefetcher, device)
         print("\n")
 
         # Update LR
         scheduler.step()
 
         # Automatically save the model with the highest index
-        is_best = acc1 > best_acc1
+        is_best = acc > best_acc1
         is_last = (epoch + 1) == train_config.epochs
-        best_acc1 = max(acc1, best_acc1)
+        best_acc1 = max(acc, best_acc1)
         save_checkpoint({"epoch": epoch + 1,
                          "best_acc1": best_acc1,
                          "state_dict": vgg_model.state_dict(),
@@ -117,30 +127,28 @@ def load_dataset(
         valid_image_dir: str = train_config.valid_image_dir,
         resized_image_size=train_config.resized_image_size,
         crop_image_size=train_config.crop_image_size,
-        dataset_mean_normalize=train_config.dataset_mean_normalize,
-        dataset_std_normalize=train_config.dataset_std_normalize,
         device: torch.device = torch.device("cpu"),
-        cifar10: bool =train_config.use_cifar10
 ) -> tuple:
     # Load train, test and valid datasets
-    if cifar10:
 
-        train_dataset = CIFAR10Dataset(root="./data", train=True)
-        valid_dataset = CIFAR10Dataset(root="./data", train=False)
-
-    else: 
-        train_dataset = ImageDataset(train_image_dir,
-                                    resized_image_size,
-                                    crop_image_size,
-                                    dataset_mean_normalize,
-                                    dataset_std_normalize,
-                                    "Train")
-        valid_dataset = ImageDataset(valid_image_dir,
-                                    resized_image_size,
-                                    crop_image_size,
-                                    dataset_mean_normalize,
-                                    dataset_std_normalize,
-                                    "Valid")
+    train_mean, train_std = train_config.train_mean_normalize, train_config.train_std_normalize
+    val_mean, val_std = train_config.val_mean_normalize, train_config.val_std_normalize
+    train_transform = get_transform('train',train_mean, train_std, train_config.resize_width, train_config.resize_height)
+    valid_transform = get_transform('val',val_mean, val_std, train_config.resize_width, train_config.resize_height) 
+    train_dataset = PolypDataset(train_config.train_split_dir, train_transform)
+    valid_dataset = PolypDataset(train_config.val_split_dir, valid_transform)
+        # train_dataset = ImageDataset(train_image_dir,
+        #                             resized_image_size,
+        #                             crop_image_size,
+        #                             dataset_mean_normalize,
+        #                             dataset_std_normalize,
+        #                             "Train")
+        # valid_dataset = ImageDataset(valid_image_dir,
+        #                             resized_image_size,
+        #                             crop_image_size,
+        #                             dataset_mean_normalize,
+        #                             dataset_std_normalize,
+        #                             "Valid")
 
     # Generator all dataloader
     train_dataloader = DataLoader(train_dataset,
@@ -224,6 +232,7 @@ def define_scheduler(
     return scheduler
 
 
+
 def train(
         model: nn.Module,
         ema_model: nn.Module,
@@ -232,82 +241,79 @@ def train(
         optimizer: optim.SGD,
         epoch: int,
         scaler: amp.GradScaler,
-        writer: SummaryWriter
+        writer: SummaryWriter,
+        device: torch.device
 ) -> None:
-    # Calculate how many batches of data are in each Epoch
     batches = len(train_prefetcher)
-    # Print information of progress bar during training
     batch_time = AverageMeter("Time", ":6.3f", Summary.NONE)
     data_time = AverageMeter("Data", ":6.3f", Summary.NONE)
     losses = AverageMeter("Loss", ":6.6f", Summary.NONE)
-    acc1 = AverageMeter("Acc@1", ":6.2f", Summary.AVERAGE)
-    acc5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
+    # acc1 = AverageMeter("Acc", ":6.2f", Summary.AVERAGE)
     progress = ProgressMeter(batches,
-                             [batch_time, data_time, losses, acc1, acc5],
+                             [batch_time, data_time, losses],
                              prefix=f"Epoch: [{epoch + 1}]")
 
-    # Put the generative network model in training mode
     model.train()
-
-    # Initialize the number of data batches to print logs on the terminal
-    batch_index = 0
-
-    # Initialize the data loader and load the first batch of data
     train_prefetcher.reset()
     batch_data = train_prefetcher.next()
-
-    # Get the initialization training time
+    batch_index = 0
     end = time.time()
 
+    # Initialize binary classification metrics
+    accuracy = BinaryAccuracy().to(device)
+    precision = BinaryPrecision().to(device)
+    recall = BinaryRecall().to(device)
+    f1 = BinaryF1Score().to(device)
+    auc = BinaryAUROC().to(device)
+
     while batch_data is not None:
-        # Transfer in-memory data to CUDA devices to speed up training
-        images = batch_data["image"].to(train_config.device, non_blocking=True)
-        target = batch_data["target"].to(train_config.device, non_blocking=True)
+        images = batch_data["image"].to(device, non_blocking=True)
+        target = batch_data["target"].to(device, non_blocking=True)
 
-        # Calculate the time it takes to load a batch of data
         data_time.update(time.time() - end)
-
-        # Get batch size
         batch_size = images.size(0)
 
-        # Initialize generator gradients
         model.zero_grad(set_to_none=True)
 
-        # Mixed precision training
         with amp.autocast():
             output = model(images)
             loss = criterion(output, target)
 
-        # Backpropagation
         scaler.scale(loss).backward()
-        # update generator weights
         scaler.step(optimizer)
         scaler.update()
-
-        # Update EMA
         ema_model.update_parameters(model)
 
-        # measure accuracy and record loss
-        top1, top5 = accuracy(output, target, topk=(1, 5))
+        # Compute top-1 accuracy
+        #top1, _ = accuracy(output, target, topk=(1, 1))
         losses.update(loss.item(), batch_size)
-        acc1.update(top1[0], batch_size)
-        acc5.update(top5[0], batch_size)
+        #acc1.update(top1[0], batch_size)
 
-        # Calculate the time it takes to fully train a batch of data
+        # Compute binary metrics
+        probs = torch.softmax(output, dim=1)[:, 1]  # For AUROC
+        preds = torch.argmax(output, dim=1)         # For precision/recall/F1
+
+        accuracy.update(preds, target)
+        precision.update(preds, target)
+        recall.update(preds, target)
+        f1.update(preds, target)
+        auc.update(probs, target)
+
         batch_time.update(time.time() - end)
         end = time.time()
 
-        # Write the data during training to the training log file
         if batch_index % train_config.train_print_frequency == 0:
-            # Record loss during training and output to file
             writer.add_scalar("Train/Loss", loss.item(), batch_index + epoch * batches)
+            writer.add_scalar("Train/Accuracy", accuracy.compute(),  batch_index + epoch * batches)
+            writer.add_scalar("Train/Precision", precision.compute(),  batch_index + epoch * batches)
+            writer.add_scalar("Train/Recall", recall.compute(),  batch_index + epoch * batches)
+            writer.add_scalar("Train/F1", f1.compute(),  batch_index + epoch * batches)
+            writer.add_scalar("Train/AUC", auc.compute(),  batch_index + epoch * batches)
             progress.display(batch_index)
 
-        # Preload the next batch of data
         batch_data = train_prefetcher.next()
-
-        # Add 1 to the number of data batches to ensure that the terminal prints data normally
         batch_index += 1
+
 
 
 if __name__ == "__main__":

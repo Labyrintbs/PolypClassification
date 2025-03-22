@@ -26,6 +26,7 @@ from torchvision.transforms import TrivialAugmentWide
 
 from imgproc import image_to_tensor
 from torchvision.datasets import CIFAR10
+import os
 
 __all__ = [
     "ImageDataset",
@@ -58,6 +59,34 @@ class CIFAR10Dataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
+
+
+class PolypDataset(Dataset):
+    def __init__(self, txt_file: str, transform=None):
+        self.image_paths = []
+        self.labels = []
+        self.class_to_idx = {"adenoma": 0, "hyperplastic polyp": 1}
+        with open(txt_file, 'r') as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                path, label = line.strip().split("\t")
+                if label not in self.class_to_idx:
+                    print(f"Skipping unknown label: {label}")
+                    continue
+                self.image_paths.append(path)
+                self.labels.append(self.class_to_idx[label])
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        image = Image.open(self.image_paths[idx]).convert("RGB")
+        if self.transform:
+            image = self.transform(image)
+        label = self.labels[idx]
+        return {"image": image, "target": label}
     
 class ImageDataset(Dataset):
     """Define training/valid dataset loading methods.

@@ -21,6 +21,8 @@ import model
 import test_config
 from dataset import CUDAPrefetcher, CPUPrefetcher, ImageDataset, CIFAR10Dataset
 from utils import load_pretrained_state_dict, accuracy, Summary, AverageMeter, ProgressMeter
+from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall, BinaryAUROC, BinaryAccuracy
+
 
 
 def build_model(
@@ -74,62 +76,65 @@ def test(
         model: nn.Module,
         data_prefetcher: CUDAPrefetcher,
         device: torch.device,
-) -> float:
-    # Calculate how many batches of data are in each Epoch
+) -> tuple:
     batches = len(data_prefetcher)
     batch_time = AverageMeter("Time", ":6.3f", Summary.NONE)
     acc1 = AverageMeter("Acc@1", ":6.2f", Summary.AVERAGE)
-    acc5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
-    progress = ProgressMeter(batches, [batch_time, acc1, acc5], prefix=f"Test: ")
+    progress = ProgressMeter(batches, [batch_time, acc1], prefix="Test: ")
 
-    # Put the exponential moving average model in the verification mode
     model.eval()
-
-    # Initialize the number of data batches to print logs on the terminal
-    batch_index = 0
-
-    # Initialize the data loader and load the first batch of data
     data_prefetcher.reset()
     batch_data = data_prefetcher.next()
-
-    # Get the initialization test time
+    batch_index = 0
     end = time.time()
+
+    # Init metrics
+    acc_metric = BinaryAccuracy().to(device)
+    f1_metric = BinaryF1Score().to(device)
+    precision_metric = BinaryPrecision().to(device)
+    recall_metric = BinaryRecall().to(device)
+    auc_metric = BinaryAUROC().to(device)
 
     with torch.no_grad():
         while batch_data is not None:
-            # Transfer in-memory data to CUDA devices to speed up training
             images = batch_data["image"].to(device, non_blocking=True)
             target = batch_data["target"].to(device, non_blocking=True)
 
-            # Get batch size
             batch_size = images.size(0)
-
-            # Inference
             output = model(images)
 
-            # measure accuracy and record loss
-            top1, top5 = accuracy(output, target, topk=(1, 5))
+            # For top-1 accuracy
+            top1, _ = accuracy(output, target, topk=(1, 1))
             acc1.update(top1[0].item(), batch_size)
-            acc5.update(top5[0].item(), batch_size)
 
-            # Calculate the time it takes to fully train a batch of data
+            # For binary metrics
+            probs = torch.softmax(output, dim=1)[:, 1]
+            preds = torch.argmax(output, dim=1)
+
+            acc_metric.update(preds, target)
+            f1_metric.update(preds, target)
+            precision_metric.update(preds, target)
+            recall_metric.update(preds, target)
+            auc_metric.update(probs, target)
+
             batch_time.update(time.time() - end)
             end = time.time()
 
-            # Write the data during training to the training log file
             if batch_index % test_config.test_print_frequency == 0:
                 progress.display(batch_index)
 
-            # Preload the next batch of data
             batch_data = data_prefetcher.next()
-
-            # After training a batch of data, add 1 to the number of data batches to ensure that the terminal prints data normally
             batch_index += 1
 
-    # print metrics
     progress.display_summary()
 
-    return acc1.avg
+    acc = acc_metric.compute().item()
+    f1 = f1_metric.compute().item()
+    precision = precision_metric.compute().item()
+    recall = recall_metric.compute().item()
+    auc = auc_metric.compute().item()
+
+    return acc, f1, precision, recall, auc
 
 
 def main() -> None:

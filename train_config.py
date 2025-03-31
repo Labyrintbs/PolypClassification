@@ -12,16 +12,19 @@
 # limitations under the License.
 # ==============================================================================
 seed = 0
-device = "cuda:0" 
+device = "cuda:2" 
 
 # Model configure
+
+# Use VGG-19 from torch official version 
+model_pretrain_torch = False
 model_arch_name = "vgg19"
 model_num_classes = 2
 
 # Usage of datasets
 
 # Experiment name, easy to save weights and log files
-exp_name = "2024.03.22-VGG19-PolarDataset" #"VGG11-ImageNet_1K"
+exp_name = "2024.03.31-VGG19-PretrainImageNet" #"VGG11-ImageNet_1K"
 # Dataset path
 train_image_dir = "./data/ImageNet_1K/ILSVRC2012_img_train"
 valid_image_dir = "./data/ImageNet_1K/ILSVRC2012_img_val"
@@ -32,6 +35,7 @@ val_split_dir = "./splits/val.txt"
 test_split_dir = "./splits/test.txt"
 
 # preprocessing args
+# if using pretrain VGG, all following dataset ad-hoc paras are not used
 train_mean_normalize = [0.3997, 0.3288, 0.2601]
 train_std_normalize = [0.0740, 0.0677, 0.0483]
 val_mean_normalize = [0.3986, 0.3282, 0.2595]
@@ -42,7 +46,10 @@ resize_height = 864
 
 resized_image_size = 32 #256
 crop_image_size = 32 #224
-batch_size = 32 #128
+# With Pretrain VGG, img crop to (256, 256) and centered at (224, 224)
+# So you can make batch_size larger
+# batch_size 64 takes ~10GB GPU Mem
+batch_size = 64 #128
 num_workers = 4
 
 # The address to load the pretrained model
@@ -52,9 +59,10 @@ pretrained_model_weights_path = "" #"./results/pretrained_models/VGG11-ImageNet_
 resume_model_weights_path = ""
 
 # Total num epochs
-epochs = 10 #600
+# Last time train from scratch takes ~300 to converge
+epochs = 300 #600
 # Validation test frequency
-val_freq = 2
+val_freq = 20
 
 # Loss parameters
 loss_label_smoothing = 0

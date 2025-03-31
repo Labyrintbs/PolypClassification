@@ -26,6 +26,7 @@ from torch.optim.swa_utils import AveragedModel
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryAUROC, BinaryAccuracy
+from torchvision.models import vgg19, VGG19_Weights
 
 
 import model
@@ -135,8 +136,13 @@ def load_dataset(
 
     train_mean, train_std = train_config.train_mean_normalize, train_config.train_std_normalize
     val_mean, val_std = train_config.val_mean_normalize, train_config.val_std_normalize
-    train_transform = get_transform('train',train_mean, train_std, train_config.resize_width, train_config.resize_height)
-    valid_transform = get_transform('val',val_mean, val_std, train_config.resize_width, train_config.resize_height) 
+    if train_config.model_pretrain_torch:
+        vgg_weights = VGG19_Weights.DEFAULT
+        train_transform = vgg_weights.transforms()
+        valid_transform = vgg_weights.transforms()
+    else:
+        train_transform = get_transform('train',train_mean, train_std, train_config.resize_width, train_config.resize_height)
+        valid_transform = get_transform('val',val_mean, val_std, train_config.resize_width, train_config.resize_height) 
     train_dataset = PolypDataset(train_config.train_split_dir, train_transform)
     valid_dataset = PolypDataset(train_config.val_split_dir, valid_transform)
         # train_dataset = ImageDataset(train_image_dir,
@@ -186,8 +192,14 @@ def build_model(
         model_ema_decay: float = train_config.model_ema_decay,
         device: torch.device = torch.device("cpu"),
 ) -> [nn.Module, nn.Module]:
-    vgg_model = model.__dict__[model_arch_name](num_classes=model_num_classes)
-    vgg_model = vgg_model.to(device)
+    if train_config.model_pretrain_torch:
+        weights = VGG19_Weights.DEFAULT
+        vgg_model = vgg19(weights=weights)
+        vgg_model.classifier[6] = nn.Linear(vgg_model.classifier[6].in_features, model_num_classes)
+        vgg_model.to(device)
+    else: 
+        vgg_model = model.__dict__[model_arch_name](num_classes=model_num_classes)
+        vgg_model = vgg_model.to(device)
 
     ema_avg = lambda averaged_model_parameter, model_parameter, num_averaged: \
         (1 - model_ema_decay) * averaged_model_parameter + model_ema_decay * model_parameter
@@ -277,7 +289,7 @@ def train(
 
         model.zero_grad(set_to_none=True)
 
-        with amp.autocast():
+        with amp.autocast(dtype=torch.float32):
             output = model(images)
             loss = criterion(output, target)
 

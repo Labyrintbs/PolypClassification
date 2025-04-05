@@ -56,7 +56,7 @@ def main(seed):
 
     # Initialize training network evaluation indicators
     best_acc1 = 0.0
-    train_dataloader, valid_dataloader = load_dataset(device=device)
+    train_dataloader, valid_dataloader = load_dataset(device=device, balanced_train=False)
     if train_config.use_balance_train:
         balanced_train_dataloader, _ = load_dataset(device=device, balanced_train=True)
     valid_prefetcher = CUDAPrefetcher(valid_dataloader, device)
@@ -95,10 +95,10 @@ def main(seed):
             balanced_train_prefetcher = CUDAPrefetcher(balanced_train_dataloader, device)
             train(vgg_model, ema_vgg_model, balanced_train_prefetcher, criterion, optimizer, epoch, scaler, writer, device)
         else:
-            if balanced_train_loader is not None:
-                del balanced_train_loader
+            if balanced_train_dataloader is not None:
+                del balanced_train_dataloader
                 torch.cuda.empty_cache()
-                balanced_train_loader = None
+                balanced_train_dataloader = None
                 print("Released balanced training loader from GPU memory.")
             train_prefetcher = CUDAPrefetcher(train_dataloader, device)
             train(vgg_model, ema_vgg_model, train_prefetcher, criterion, optimizer, epoch, scaler, writer, device)

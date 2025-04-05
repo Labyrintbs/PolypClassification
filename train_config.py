@@ -17,6 +17,7 @@ device = "cuda:2"
 # Model configure
 
 # Use VGG-19 from torch official version 
+model_torch = True
 model_pretrain_torch = False
 model_arch_name = "vgg19"
 model_num_classes = 2
@@ -31,6 +32,7 @@ valid_image_dir = "./data/ImageNet_1K/ILSVRC2012_img_val"
 
 # Dataset split path
 train_split_dir = "./splits/train.txt"
+balanced_train_split_dir = "./splits/balanced_train.txt"
 val_split_dir = "./splits/val.txt"
 test_split_dir = "./splits/test.txt"
 
@@ -40,6 +42,10 @@ train_mean_normalize = [0.3997, 0.3288, 0.2601]
 train_std_normalize = [0.0740, 0.0677, 0.0483]
 val_mean_normalize = [0.3986, 0.3282, 0.2595]
 val_std_normalize = [0.0761, 0.0698, 0.0501]
+
+# Dataset args
+
+use_balance_train = False
 
 resize_width = 1096
 resize_height = 864

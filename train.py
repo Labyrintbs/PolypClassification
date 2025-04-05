@@ -56,8 +56,10 @@ def main(seed):
 
     # Initialize training network evaluation indicators
     best_acc1 = 0.0
-
-    train_prefetcher, valid_prefetcher = load_dataset(device=device)
+    train_dataloader, valid_dataloader = load_dataset(device=device)
+    if train_config.use_balance_train:
+        balanced_train_dataloader, _ = load_dataset(device=device, balanced_train=True)
+    valid_prefetcher = CUDAPrefetcher(valid_dataloader, device)
     vgg_model, ema_vgg_model = build_model(device=device)
     criterion = define_loss(device=device)
     optimizer = define_optimizer(vgg_model)
@@ -89,7 +91,18 @@ def main(seed):
     writer = SummaryWriter(os.path.join("samples", "logs", train_config.exp_name))
 
     for epoch in range(start_epoch, train_config.epochs):
-        train(vgg_model, ema_vgg_model, train_prefetcher, criterion, optimizer, epoch, scaler, writer, device)
+        if train_config.use_balance_train and epoch < 100:
+            balanced_train_prefetcher = CUDAPrefetcher(balanced_train_dataloader, device)
+            train(vgg_model, ema_vgg_model, balanced_train_prefetcher, criterion, optimizer, epoch, scaler, writer, device)
+        else:
+            if balanced_train_loader is not None:
+                del balanced_train_loader
+                torch.cuda.empty_cache()
+                balanced_train_loader = None
+                print("Released balanced training loader from GPU memory.")
+            train_prefetcher = CUDAPrefetcher(train_dataloader, device)
+            train(vgg_model, ema_vgg_model, train_prefetcher, criterion, optimizer, epoch, scaler, writer, device)
+
         if (epoch + 1) % train_config.val_freq == 0 or (epoch + 1) == train_config.epochs:
             acc, f1, precision, recall, auc = test(ema_vgg_model, valid_prefetcher, device)
             writer.add_scalar("Val/Accuracy", acc, epoch)
@@ -130,20 +143,24 @@ def load_dataset(
         valid_image_dir: str = train_config.valid_image_dir,
         resized_image_size=train_config.resized_image_size,
         crop_image_size=train_config.crop_image_size,
+        balanced_train=train_config.use_balance_train,
         device: torch.device = torch.device("cpu"),
 ) -> tuple:
     # Load train, test and valid datasets
 
     train_mean, train_std = train_config.train_mean_normalize, train_config.train_std_normalize
     val_mean, val_std = train_config.val_mean_normalize, train_config.val_std_normalize
-    if train_config.model_pretrain_torch:
+    if train_config.model_torch:
         vgg_weights = VGG19_Weights.DEFAULT
         train_transform = vgg_weights.transforms()
         valid_transform = vgg_weights.transforms()
     else:
         train_transform = get_transform('train',train_mean, train_std, train_config.resize_width, train_config.resize_height)
         valid_transform = get_transform('val',val_mean, val_std, train_config.resize_width, train_config.resize_height) 
-    train_dataset = PolypDataset(train_config.train_split_dir, train_transform)
+    if balanced_train:
+        train_dataset = PolypDataset(train_config.balanced_train_split_dir, train_transform)
+    else:
+        train_dataset = PolypDataset(train_config.train_split_dir, train_transform)
     valid_dataset = PolypDataset(train_config.val_split_dir, valid_transform)
         # train_dataset = ImageDataset(train_image_dir,
         #                             resized_image_size,
@@ -174,16 +191,17 @@ def load_dataset(
                                   drop_last=False,
                                   persistent_workers=True)
 
+    return train_dataloader, valid_dataloader
     # Place all data on the preprocessing data loader
-    if device.type == "cuda":
+    # if device.type == "cuda":
 
-        train_prefetcher = CUDAPrefetcher(train_dataloader, device)
-        valid_prefetcher = CUDAPrefetcher(valid_dataloader, device)
-    elif device.type == "cpu":
-        train_prefetcher = CPUPrefetcher(train_dataloader)
-        valid_prefetcher = CPUPrefetcher(valid_dataloader)
+    #     train_prefetcher = CUDAPrefetcher(train_dataloader, device)
+    #     valid_prefetcher = CUDAPrefetcher(valid_dataloader, device)
+    # elif device.type == "cpu":
+    #     train_prefetcher = CPUPrefetcher(train_dataloader)
+    #     valid_prefetcher = CPUPrefetcher(valid_dataloader)
 
-    return train_prefetcher, valid_prefetcher
+    # return train_prefetcher, valid_prefetcher
 
 
 def build_model(
@@ -192,9 +210,12 @@ def build_model(
         model_ema_decay: float = train_config.model_ema_decay,
         device: torch.device = torch.device("cpu"),
 ) -> [nn.Module, nn.Module]:
-    if train_config.model_pretrain_torch:
+    if train_config.model_torch:
         weights = VGG19_Weights.DEFAULT
-        vgg_model = vgg19(weights=weights)
+        if train_config.model_pretrain_torch:
+            vgg_model = vgg19(weights=weights)
+        else:
+            vgg_model = vgg19(weights=None)
         vgg_model.classifier[6] = nn.Linear(vgg_model.classifier[6].in_features, model_num_classes)
         vgg_model.to(device)
     else: 

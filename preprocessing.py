@@ -28,6 +28,14 @@ def split_dataset(
     df_val = df_train_full.iloc[:val_size]
     df_train = df_train_full.iloc[val_size:]
 
+    min_class_size = df_train["PATHOLOGY DIAGNOSIS"].value_counts().min()
+
+    balanced_df_list = []
+    for label, group_df in df_train.groupby("PATHOLOGY DIAGNOSIS"):
+        balanced_df_list.append(group_df.sample(n=min_class_size, random_state=seed))
+
+    df_balanced_train = pd.concat(balanced_df_list).sample(frac=1, random_state=seed).reset_index(drop=True)
+
 
     def get_img_path(row):
         patient_id = row['PATIENT_ID']
@@ -47,7 +55,7 @@ def split_dataset(
                     return img_path
         return None
 
-    for name, subset in [("train", df_train), ("val", df_val), ("test", df_test)]:
+    for name, subset in[("train", df_train), ("val", df_val), ("test", df_test), ("balanced_train", df_balanced_train)]:
         samples = []
         for _, row in subset.iterrows():
             path = get_img_path(row)
@@ -145,7 +153,7 @@ if __name__ ==  "__main__":
         print(f"Test {c}: {summary[c]['mean']:.4f} ± {summary[c]['std']:.4f}")
     
     val_paths, val_labels = load_paths_and_labels("splits/val.txt")
-    stats, summary = analyze_image_statistics(val_paths)
+    #stats, summary = analyze_image_statistics(val_paths)
 
     for c in ["mean_R", "mean_G", "mean_B"]:
         print(f"Val {c}: {summary[c]['mean']:.4f} ± {summary[c]['std']:.4f}")

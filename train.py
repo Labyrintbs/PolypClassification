@@ -14,7 +14,7 @@
 import os
 import random
 import time
-
+import json, inspect
 import numpy as np
 import torch
 from torch import nn
@@ -86,6 +86,7 @@ def main(seed):
     results_dir = os.path.join("results", train_config.exp_name)
     make_directory(samples_dir)
     make_directory(results_dir)
+    export_config(train_config, samples_dir)
 
     # Create training process log file
     writer = SummaryWriter(os.path.join("samples", "logs", train_config.exp_name))
@@ -151,9 +152,15 @@ def load_dataset(
     train_mean, train_std = train_config.train_mean_normalize, train_config.train_std_normalize
     val_mean, val_std = train_config.val_mean_normalize, train_config.val_std_normalize
     if train_config.model_torch:
-        vgg_weights = VGG19_Weights.DEFAULT
-        train_transform = vgg_weights.transforms()
-        valid_transform = vgg_weights.transforms()
+        if train_config.model_pretrain_torch:
+            vgg_weights = VGG19_Weights.DEFAULT
+            train_transform = vgg_weights.transforms()
+            valid_transform = vgg_weights.transforms()
+        else:
+            train_transform = get_transform('train', train_mean, train_std,
+                                            train_config.resize_width, train_config.resize_height)
+            valid_transform = get_transform('val', val_mean, val_std,
+                                            train_config.resize_width, train_config.resize_height)
     else:
         train_transform = get_transform('train',train_mean, train_std, train_config.resize_width, train_config.resize_height)
         valid_transform = get_transform('val',val_mean, val_std, train_config.resize_width, train_config.resize_height) 
@@ -266,6 +273,18 @@ def define_scheduler(
 
     return scheduler
 
+def export_config(config_module, save_path):
+    config_dict = {
+        k: v
+        for k, v in vars(config_module).items()
+        if not k.startswith("__") and not inspect.ismodule(v)
+    }
+
+    json_path = os.path.join(save_path, "config.json")
+    with open(json_path, "w") as f:
+        json.dump(config_dict, f, indent=4)
+
+    print(f"Saved train_config to  {json_path}")
 
 
 def train(

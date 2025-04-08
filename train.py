@@ -59,6 +59,8 @@ def main(seed):
     train_dataloader, valid_dataloader = load_dataset(device=device, balanced_train=False)
     if train_config.use_balance_train:
         balanced_train_dataloader, _ = load_dataset(device=device, balanced_train=True)
+    else:
+        balanced_train_dataloader = None
     valid_prefetcher = CUDAPrefetcher(valid_dataloader, device)
     vgg_model, ema_vgg_model = build_model(device=device)
     criterion = define_loss(device=device)

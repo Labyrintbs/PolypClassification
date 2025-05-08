@@ -86,7 +86,7 @@ class PolypDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         label = self.labels[idx]
-        return {"image": image, "target": label}
+        return {"image": image, "target": label,  "path": self.image_paths[idx]}
     
 class ImageDataset(Dataset):
     """Define training/valid dataset loading methods.

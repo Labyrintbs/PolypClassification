@@ -12,6 +12,7 @@ import train_config
 from dataset import CUDAPrefetcher, CPUPrefetcher, PolypDataset
 from utils import get_transform
 from torchvision.models import vgg19, VGG19_Weights
+import pandas as pd
 
 # --------------------------------------
 # Step 1: Find the best F1 epoch
@@ -79,11 +80,13 @@ def main(checkpoint_path):
 
     all_preds = []
     all_targets = []
+    all_paths = []
 
     with torch.no_grad():
         while batch_data is not None:
             images = batch_data["image"].to(device)
             targets = batch_data["target"].to(device)
+            paths = batch_data["path"] 
 
             outputs = model_arch(images)
             probs = torch.softmax(outputs, dim=1)[:, 1]
@@ -91,6 +94,7 @@ def main(checkpoint_path):
 
             all_preds.append(preds.cpu())
             all_targets.append(targets.cpu())
+            all_paths.extend(paths)
 
             accuracy.update(preds, targets)
             precision.update(preds, targets)
@@ -117,9 +121,23 @@ def main(checkpoint_path):
     print("🧮 Confusion Matrix:")
     print(confusion_matrix(all_targets, all_preds))
 
+    idx_to_class = {0: "adenoma", 1: "hyperplastic polyp"}
+    df = pd.DataFrame({
+        "path": all_paths,
+        "target": all_targets,
+        "pred": all_preds
+    })
+    df["target_name"] = df["target"].map(idx_to_class)
+    df["pred_name"] = df["pred"].map(idx_to_class)
+    errors = df[df["target"] != df["pred"]]
+    errors.to_csv("misclassified_samples.csv", index=False)
+
+    print(f"\n❌ Number of incorrect predictions: {len(errors)}")
+    print("📁 Misclassified sample paths saved to 'misclassified_samples.csv'")
+
 
 if __name__ == "__main__":
-    checkpoint_path = '~/IMA_project/PolypClassification/samples/2024.04.01-VGG19-Scratch-Size-224-224-BatchSize-64/epoch_200.pth.tar'
+    checkpoint_path = '~/IMA_project/PolypClassification/samples/2024.03.31-VGG19-PretrainImageNet/epoch_80.pth.tar'
     checkpoint_path = os.path.expanduser(checkpoint_path)
 
     main(checkpoint_path)

@@ -52,7 +52,9 @@ def main(checkpoint_path):
         test_transform = vgg_weights.transforms()
     else:
         test_transform = get_transform('val', test_mean, test_std, train_config.resize_width, train_config.resize_height)
-    test_dataset = PolypDataset(os.path.expanduser("./splits/test.txt"), test_transform)
+    
+    #test_dataset = PolypDataset(os.path.expanduser("./splits/test.txt"), test_transform)
+    test_dataset = PolypDataset(os.path.expanduser("./splits/val.txt"), test_transform)
 
     test_loader = DataLoader(test_dataset,
                              batch_size=train_config.batch_size,
@@ -115,10 +117,10 @@ def main(checkpoint_path):
     all_preds = torch.cat(all_preds).numpy()
     all_targets = torch.cat(all_targets).numpy()
 
-    print("\n🧾 Classification Report:")
+    print("\n Classification Report:")
     print(classification_report(all_targets, all_preds, digits=4))
 
-    print("🧮 Confusion Matrix:")
+    print(" Confusion Matrix:")
     print(confusion_matrix(all_targets, all_preds))
 
     idx_to_class = {0: "adenoma", 1: "hyperplastic polyp"}
@@ -130,14 +132,15 @@ def main(checkpoint_path):
     df["target_name"] = df["target"].map(idx_to_class)
     df["pred_name"] = df["pred"].map(idx_to_class)
     errors = df[df["target"] != df["pred"]]
-    errors.to_csv("misclassified_samples.csv", index=False)
+    csv_file = "error/1stage/val/2024.05.12-VGG19-torch-BalancedTrain1Stage-Batch-128-seed-4_valid.csv"
+    errors.to_csv(csv_file, index=False)
 
     print(f"\n❌ Number of incorrect predictions: {len(errors)}")
-    print("📁 Misclassified sample paths saved to 'misclassified_samples.csv'")
+    print(f"📁 Misclassified sample paths saved to {csv_file}")
 
 
 if __name__ == "__main__":
-    checkpoint_path = '~/IMA_project/PolypClassification/samples/2024.03.31-VGG19-PretrainImageNet/epoch_80.pth.tar'
+    checkpoint_path = '~/IMA_project/PolypClassification/samples/2024.05.12-VGG19-torch-BalancedTrain1Stage-Batch-128-seed-4/epoch_120.pth.tar'
     checkpoint_path = os.path.expanduser(checkpoint_path)
 
     main(checkpoint_path)

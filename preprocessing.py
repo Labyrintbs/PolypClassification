@@ -42,12 +42,25 @@ def split_dataset(
         polyp_id = row['POLYP_ID']
         image_prefix = row["IMG_FILE_PREFIX"]
 
-        if row['SPLIT'] == 'train':                           
+        if "_aug" in image_prefix:
+            img_folder = os.path.join(data_dir, "augmented_hyperplastic_images")
+            filename = image_prefix + ".png"
+            img_path = os.path.join(img_folder, filename)
+
+        elif row['SPLIT'] == 'train':                           
             img_folder = os.path.join(data_dir, "train_set", patient_id, polyp_id)
         elif row['SPLIT'] == 'valid':
             img_folder = os.path.join(data_dir, "validation_set", patient_id) 
         else:
             raise FileExistsError(f"This folder {img_folder} doesn't exist")
+        # if os.path.exists(img_path):
+        #     return img_path
+        # if row['SPLIT'] == 'train':                           
+        #     img_folder = os.path.join(data_dir, "train_set", patient_id, polyp_id)
+        # elif row['SPLIT'] == 'valid':
+        #     img_folder = os.path.join(data_dir, "validation_set", patient_id) 
+        # else:
+        #     raise FileExistsError(f"This folder {img_folder} doesn't exist")
         if os.path.exists(img_folder):
             for img_file in os.listdir(img_folder):
                 if img_file.startswith(image_prefix): 
@@ -63,12 +76,29 @@ def split_dataset(
             if path:
                 samples.append((path, label))
 
-        txt_path = os.path.join(results_dir, f"{name}.txt")
+        txt_path = os.path.join(results_dir, f"{name}_aug.txt")
         with open(txt_path, "w") as f:
             for path, label in samples:
                 f.write(f"{path}\t{label}\n")
 
         print(f"{name}: {len(samples)} samples saved to {txt_path}")
+
+        total_samples = {
+        "train": len(df_train),
+        "val": len(df_val),
+        "test": len(df_test),
+        "balanced_train": len(df_balanced_train)
+    }
+
+    total_found = sum([len(open(os.path.join(results_dir, f"{name}_aug.txt")).readlines()) for name in total_samples])
+    print("\n Dataset split summary:")
+    for name in total_samples:
+        txt_file = os.path.join(results_dir, f"{name}_aug.txt")
+        with open(txt_file, "r") as f:
+            found = len(f.readlines())
+        print(f" - {name}: {found}/{total_samples[name]} entries matched (found/image path valid)")
+
+    print(f"Total matched images: {total_found}")
 
 
 
@@ -136,11 +166,12 @@ def load_paths_and_labels(txt_path: str):
 
 if __name__ ==  "__main__":
     print("Start preprocessing!")
-    csv_path="/Users/tuboshu/Documents/2024/M2/IMA_Project/PolypClassification/polar_dataset_filterd.csv"
-    data_dir="/Users/tuboshu/Downloads/Polar_Dataset"
+    #csv_path="/Users/tuboshu/Documents/2024/M2/IMA_Project/PolypClassification/polar_dataset_filterd.csv"
+    csv_path="/users/Etu0/21400500/IMA_project/PolypClassification/polar_dataset_combined.csv"
+    data_dir="/users/Etu0/21400500/Polar_Dataset"
     results_dir="./splits"
     split_dataset(csv_path, data_dir, results_dir)
-    train_paths, train_labels = load_paths_and_labels("splits/train.txt")
+    train_paths, train_labels = load_paths_and_labels("splits/train_aug.txt")
     stats, summary = analyze_image_statistics(train_paths)
 
     for c in ["mean_R", "mean_G", "mean_B"]:

@@ -94,7 +94,8 @@ def main(seed):
     writer = SummaryWriter(os.path.join("samples", "logs", train_config.exp_name))
 
     for epoch in range(start_epoch, train_config.epochs):
-        if train_config.use_balance_train and epoch < 100:
+        #if train_config.use_balance_train and epoch < 100:
+        if train_config.use_balance_train:
             balanced_train_prefetcher = CUDAPrefetcher(balanced_train_dataloader, device)
             train(vgg_model, ema_vgg_model, balanced_train_prefetcher, criterion, optimizer, epoch, scaler, writer, device)
         else:
